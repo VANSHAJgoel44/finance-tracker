@@ -16,7 +16,7 @@ const analyticsRoutes = require("./routes/analytics");
 const app = express();
 app.use(helmet());
 app.use(express.json());
-app.use("/api/analytics", analytics);
+app.use("/api/analytics", analyticsRoutes);
 
 // -------------------- CORS --------------------
 const allowedOrigin = process.env.CORS_ORIGIN || "https://melodic-hummingbird-b5735e.netlify.app";
