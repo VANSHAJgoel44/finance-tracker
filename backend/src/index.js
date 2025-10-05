@@ -5,7 +5,8 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const { connect: connectRedis } =require('./redisClient');
-const authRoutes = require( './routes/auth');
+const authRoutes = require('./routes/authRoutes');
+
 const txRoutes =require('./routes/transactions');
 const analyticsRoutes = require('./routes/analytics');
 const usersRoutes= require( './routes/users');
