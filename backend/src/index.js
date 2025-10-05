@@ -8,11 +8,15 @@ const { connect } = require("./redisClient");
 
 // ✅ Import routes (make sure this matches the filename)
 const authRoutes = require("./routes/authRoutes");
+const analyticsRoutes = require("./routes/analytics");
+
+
 
 // -------------------- APP SETUP --------------------
 const app = express();
 app.use(helmet());
 app.use(express.json());
+app.use("/api/analytics", analyticsRoutes);
 
 // -------------------- CORS --------------------
 const allowedOrigin = process.env.CORS_ORIGIN || "https://melodic-hummingbird-b5735e.netlify.app";
