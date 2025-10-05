@@ -1,59 +1,36 @@
-const express = require('express');
+// backend/src/routes/analytics.js
+const express = require("express");
+const pool = require("../db");
+
 const router = express.Router();
-const { pool } =require('../db');
-const { authMiddleware } = require('../middleware/auth');
-const { get, setEx } =require('../redisClient');
-// GET /api/analytics
-router.get('/', authMiddleware, async (req, res) => {
+
+// ✅ GET /api/analytics — summary of all transactions
+router.get("/", async (req, res) => {
   try {
-    const userId =req.user.id;
-    const role =req.user.role;
-    const cacheKey = `analytics:${role}:${userId}`;
-    const cached =await get(cacheKey);
-    if (cached) {
-      return res.json(JSON.parse(cached));
-    }
-    const params = role ==='admin' ? [] : [userId];
+    const incomeRes = await pool.query(
+      "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type='income';"
+    );
+    const expenseRes = await pool.query(
+      "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type='expense';"
+    );
 
-    //summary
-    const monthlyQ = `
-      SELECT DATE_TRUNC('month', date) AS month,
-             SUM(CASE WHEN type='income' THEN amount ELSE 0 END) AS income,
-             SUM(CASE WHEN type='expense' THEN amount ELSE 0 END) AS expense
-      FROM transactions
-      ${role === 'admin' ? '' : 'WHERE user_id = $1'}
-      GROUP BY month
-      ORDER BY month;
-    `;
-    const monthlyRes =await pool.query(monthlyQ, params);
+    const categoryRes = await pool.query(
+      "SELECT category, SUM(amount) as total FROM transactions WHERE type='expense' GROUP BY category;"
+    );
 
-    //categories
-    let categoriesQ;
-    if (role ==='admin') {
-      categoriesQ = `
-        SELECT category, SUM(amount) AS total
-        FROM transactions
-        WHERE type='expense'
-        GROUP BY category
-        ORDER BY total DESC;
-      `;
-    } else {
-      categoriesQ = `
-        SELECT category, SUM(amount) AS total
-        FROM transactions
-        WHERE user_id = $1 AND type='expense'
-        GROUP BY category
-        ORDER BY total DESC;
-      `;
-    }
-    const catRes =await pool.query(categoriesQ, params);
-    const payload= {monthly: monthlyRes.rows, categories: catRes.rows };
-    await setEx(cacheKey, 15 * 60, payload);
+    const totalIncome = Number(incomeRes.rows[0].total);
+    const totalExpense = Number(expenseRes.rows[0].total);
+    const netBalance = totalIncome - totalExpense;
 
-    res.json(payload);
-  } catch (e) {
-    console.error('analytics err', e && e.message);
-    res.status(500).json({ error: 'Failed to load analytics' });
+    res.json({
+      totalIncome,
+      totalExpense,
+      netBalance,
+      categoryBreakdown: categoryRes.rows,
+    });
+  } catch (err) {
+    console.error("Analytics fetch error:", err.message);
+    res.status(500).json({ error: "Failed to fetch analytics" });
   }
 });
 
