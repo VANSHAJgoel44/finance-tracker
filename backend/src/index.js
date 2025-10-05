@@ -1,32 +1,49 @@
-// main server
-const express = require( 'express');
-const helmet = require('helmet');
-const cors = require('cors');
-const rateLimit = require('express-rate-limit');
-require('dotenv').config();
-const { connect: connectRedis } =require('./redisClient');
-const authRoutes = require('./routes/authRoutes');
+// -------------------- IMPORTS --------------------
+const express = require("express");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "../.env") });
+const { connect } = require("./redisClient");
 
-const txRoutes =require('./routes/transactions');
-const analyticsRoutes = require('./routes/analytics');
-const usersRoutes= require( './routes/users');
+// ✅ Import routes (make sure this matches the filename)
+const authRoutes = require("./routes/authRoutes");
 
+// -------------------- APP SETUP --------------------
 const app = express();
 app.use(helmet());
 app.use(express.json());
-app.use(cors({origin: process.env.CORS_ORIGIN || '*' }));
 
+// -------------------- CORS --------------------
+const allowedOrigin = process.env.CORS_ORIGIN || "https://melodic-hummingbird-b5735e.netlify.app";
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", allowedOrigin);
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
+// -------------------- RATE LIMIT --------------------
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 }));
-app.use('/api/auth', authRoutes);
-app.use('/api/transactions',txRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/users',usersRoutes);
 
-const PORT =process.env.PORT || 4000;
+// -------------------- ROUTES --------------------
+app.use("/api/auth", authRoutes);
 
-connectRedis().then(() => {
-  app.listen(PORT, () =>console.log('Server running on', PORT));
-}).catch(err => {
-  console.error('Redis connect failed (continuing):', err && err.message);
-  app.listen(PORT, () => console.log('Server running on', PORT));
+// -------------------- ROOT & FALLBACK --------------------
+app.get("/", (req, res) => res.send("✅ Backend running fine"));
+
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
+});
+
+// -------------------- SERVER START --------------------
+const PORT = process.env.PORT || 4000;
+
+connect().then(() => {
+  app.listen(PORT, () => {
+    console.log("✅ Auth route mounted at /api/auth");
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`✅ CORS origin: ${allowedOrigin}`);
+  });
 });
