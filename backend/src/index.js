@@ -83,6 +83,11 @@ connect().then(() => {
   app.listen(PORT, () => {
     console.log("✅ Auth route mounted at /api/auth");
     console.log(`✅ Server running on port ${PORT}`);
-    console.log(`✅ CORS origin: ${allowedOrigin}`);
+
+    // Informational: what origins/patterns we accept
+    const envOrigins = (process.env.CORS_ORIGIN || "").split(",").map(s => s.trim()).filter(Boolean);
+    console.log("✅ CORS allowed (from CORS_ORIGIN env):", envOrigins.length ? envOrigins : "(none)");
+    console.log("✅ CORS allowed patterns: [/\\.vercel\\.app$/, /\\.netlify\\.app$/]");
   });
 });
+
