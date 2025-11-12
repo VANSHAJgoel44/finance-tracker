@@ -1,113 +1,120 @@
+// frontend/src/pages/Dashboard.jsx
 import React, { useEffect, useState, useContext } from "react";
 import api from "../api";
 import { AuthContext } from "../contexts/AuthContext";
 import { Chart as ChartJS, ArcElement, LineElement, BarElement, CategoryScale, LinearScale, PointElement, Tooltip, Legend } from "chart.js";
-import { Pie, Line, Bar } from "react-chartjs-2";
+import { Pie, Line } from "react-chartjs-2";
 
 ChartJS.register(ArcElement, LineElement, BarElement, CategoryScale, LinearScale, PointElement, Tooltip, Legend);
 
 export default function Dashboard() {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
   const { user } = useContext(AuthContext);
+  const [data, setData] = useState(null);
+  const [raw, setRaw] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
-    setError(null);
+    setLoading(true);
     api.get("/analytics")
-      .then((res) => {
-        // Expecting res.data to be the analytics object
+      .then(res => {
         if (!mounted) return;
-        setData(res.data || null);
+        setRaw(res.data);      // keep raw response visible
+        setData(res.data || {});
+        setError(null);
       })
-      .catch((e) => {
-        console.error("analytics fetch err", e && (e.response?.data || e.message));
+      .catch(e => {
+        console.error("analytics fetch err:", e && (e.response?.data || e.message));
         if (!mounted) return;
-        setError("Failed to load analytics. See console for details.");
-        setData(null);
-      });
+        setError("Failed to load analytics (check console)");
+        setData({});
+        setRaw(e && e.response && e.response.data ? e.response.data : null);
+      })
+      .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, []);
 
-  if (error) {
-    return (
-      <div className="card">
-        <h3>Error</h3>
-        <div>{error}</div>
-      </div>
-    );
-  }
+  // Defensive normalization: support several shapes
+  const analytics = data && (data.analytics || data) || {};
+  const monthly = Array.isArray(analytics.monthly) ? analytics.monthly
+    : Array.isArray(analytics.months) ? analytics.months
+    : Array.isArray(analytics.monthlyData) ? analytics.monthlyData
+    : [];
 
-  if (!data) {
-    return <div className="card">Loading analytics...</div>;
-  }
+  const categories = Array.isArray(analytics.categories) ? analytics.categories
+    : Array.isArray(analytics.categoryTotals) ? analytics.categoryTotals
+    : Array.isArray(analytics.categoriesData) ? analytics.categoriesData
+    : [];
 
-  // Defensive defaults: if the backend doesn't return properties, use empty arrays
-  const monthly = Array.isArray(data.monthly) ? data.monthly : [];
-  const categories = Array.isArray(data.categories) ? data.categories : [];
-
-  // Prepare labels / data for charts safely
-  const labels = monthly.map((m) => {
-    try {
-      return new Date(m.month).toLocaleDateString("en-US", { month: "short", year: "numeric" });
-    } catch {
-      // fallback if month isn't parseable
-      return String(m.month || "");
-    }
+  // Derived safe arrays
+  const labels = monthly.map(m => {
+    try { return new Date(m.month).toLocaleDateString("en-US", { month: "short", year: "numeric" }); }
+    catch { return String(m.month || ""); }
   });
+  const incomeData = monthly.map(m => parseFloat(m.income || m.in || 0));
+  const expenseData = monthly.map(m => parseFloat(m.expense || m.exp || 0));
 
-  const incomeData = monthly.map((m) => parseFloat(m.income || 0));
-  const expenseData = monthly.map((m) => parseFloat(m.expense || 0));
+  const pieLabels = categories.map(c => c.category || c.name || "Unknown");
+  const pieValues = categories.map(c => parseFloat(c.total || c.amount || c.value || 0));
 
-  const pieLabels = categories.map((c) => c.category || "Unknown");
-  const pieValues = categories.map((c) => parseFloat(c.total || 0));
-
-  const lineData = {
-    labels,
-    datasets: [
-      { label: "Income", data: incomeData, fill: false, tension: 0.1 },
-      { label: "Expense", data: expenseData, fill: false, tension: 0.1 },
-    ],
-  };
-
-  const pieData = {
-    labels: pieLabels,
-    datasets: [
-      {
-        data: pieValues,
-        // default colors (chartjs will fallback if omitted)
-        backgroundColor: ["#0099cc", "#00cc99", "#ffaa00", "#ff6666", "#9999ff"],
-      },
-    ],
-  };
-
+  // Render
   return (
-    <div>
-      <div className="header">
+    <div style={{ padding: 20 }}>
+      <div style={{ marginBottom: 12 }}>
         <h2>Dashboard</h2>
-        <p>Welcome, {user?.name || "User"}</p>
+        <div style={{ color: "#666" }}>
+          Signed in as: <strong>{user?.name ?? user?.email ?? "Unknown"}</strong> (id: {user?.id ?? "?"})
+        </div>
       </div>
 
-      <div className="grid">
-        <div className="card">
+      {loading && <div className="card">Loading analytics...</div>}
+      {error && <div className="card" style={{ color: "darkred" }}>{error}</div>}
+
+      {/* Diagnostics & raw JSON */}
+      <div className="card" style={{ marginTop: 12 }}>
+        <h3>Diagnostics</h3>
+        <div><strong>Raw analytics object keys:</strong> {raw ? Object.keys(raw).join(", ") : "(no raw response)"}</div>
+        <div><strong>monthly array length:</strong> {monthly.length}</div>
+        <div><strong>categories array length:</strong> {categories.length}</div>
+      </div>
+
+      {/* Show charts or "no data" messages */}
+      <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+        <div className="card" style={{ flex: 1, minWidth: 300 }}>
           <h3>Monthly Income / Expense</h3>
-          {labels.length ? (
-            <Line data={lineData} />
+          {monthly.length ? (
+            <Line data={{
+              labels,
+              datasets: [
+                { label: "Income", data: incomeData, fill: false, tension: 0.2 },
+                { label: "Expense", data: expenseData, fill: false, tension: 0.2 }
+              ]
+            }} />
           ) : (
             <div>No monthly data available</div>
           )}
         </div>
 
-        <div className="card">
+        <div className="card" style={{ width: 400 }}>
           <h3>Spending by Category</h3>
           {pieValues.length ? (
-            <Pie data={pieData} />
+            <Pie data={{
+              labels: pieLabels,
+              datasets: [{ data: pieValues, backgroundColor: ['#0099cc','#00cc99','#ffaa00','#ff6666','#9999ff'] }]
+            }} />
           ) : (
             <div>No category data available</div>
           )}
         </div>
+      </div>
 
-        {/* Add any other analytics widgets below, always guarding with defensive checks */}
+      {/* Raw JSON viewer for debugging */}
+      <div className="card" style={{ marginTop: 12 }}>
+        <h3>Raw analytics JSON (debug)</h3>
+        <pre style={{ whiteSpace: "pre-wrap", maxHeight: 400, overflow: "auto", background: "#f7f7f7", padding: 10 }}>
+          {raw ? JSON.stringify(raw, null, 2) : "(no raw response body)"}
+        </pre>
       </div>
     </div>
   );
